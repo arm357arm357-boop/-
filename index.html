@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>یادآور تکرارشونده</title>
+<style>
+:root{--bg:#f6f5f1;--fg:#1d1d1b;--card:#fff;--acc:#2f7de1;--mut:#77756e;--bd:#d9d7cf}
+@media (prefers-color-scheme:dark){:root{--bg:#17171a;--fg:#f1efe9;--card:#242428;--acc:#5b9bff;--mut:#9c9a93;--bd:#3a3a40}}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;background:var(--bg);color:var(--fg);font-family:Tahoma,system-ui,sans-serif;display:flex;justify-content:center;padding:calc(20px + env(safe-area-inset-top)) 20px 20px}
+main{width:100%;max-width:420px;background:var(--card);border-radius:18px;padding:22px;align-self:flex-start}
+h1{margin:0 0 18px;font-size:22px}
+label{display:block;margin:14px 0 6px;color:var(--mut);font-size:14px}
+input,select,button{font:inherit;width:100%;padding:12px;border-radius:12px;border:1px solid var(--bd);background:var(--bg);color:var(--fg)}
+.row{display:flex;gap:10px}
+.row>*:first-child{flex:2}.row>*:last-child{flex:1.2}
+button{margin-top:20px;border:0;background:var(--acc);color:#fff;font-size:18px}
+button.stop{background:#d64545}
+#st{margin-top:16px;color:var(--mut);font-size:14px;line-height:1.8;min-height:48px;white-space:pre-line}
+</style>
+</head>
+<body>
+<main>
+  <h1>🔔 یادآور تکرارشونده</h1>
+  <label for="txt">متن اعلان</label>
+  <input id="txt" value="وقت استراحته!">
+  <label for="num">هر چند وقت یک‌بار تکرار شود؟</label>
+  <div class="row">
+    <input id="num" type="number" inputmode="decimal" min="1" value="30">
+    <select id="unit">
+      <option value="1">ثانیه</option>
+      <option value="60" selected>دقیقه</option>
+      <option value="3600">ساعت</option>
+    </select>
+  </div>
+  <button id="btn">شروع</button>
+  <div id="st"></div>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+const LN = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.LocalNotifications;
+const AHEAD = 48;
+let active = false;
+
+const setStatus = t => $('st').textContent = t;
+const save = o => { try { localStorage.setItem('rem', JSON.stringify(o)); } catch (e) {} };
+const load = () => { try { return JSON.parse(localStorage.getItem('rem') || 'null'); } catch (e) { return null; } };
+
+function setUI(on) {
+  active = on;
+  $('btn').textContent = on ? 'توقف' : 'شروع';
+  $('btn').className = on ? 'stop' : '';
+}
+
+async function cancelAll() {
+  const p = await LN.getPending();
+  if (p.notifications.length) await LN.cancel({ notifications: p.notifications });
+}
+
+async function start(silent) {
+  if (!LN) { setStatus('این برنامه باید داخل اپ اندروید (APK) اجرا شود.'); return; }
+  const n = parseFloat($('num').value), u = parseInt($('unit').value);
+  if (!(n > 0)) { setStatus('یک عدد بزرگ‌تر از صفر وارد کنید.'); return; }
+
+  const perm = await LN.requestPermissions();
+  if (perm.display !== 'granted') { setStatus('اجازه‌ی اعلان داده نشد. از تنظیمات گوشی فعالش کنید.'); return; }
+
+  await cancelAll();
+  const ms = n * u * 1000, now = Date.now(), list = [];
+  for (let i = 0; i < AHEAD; i++) {
+    list.push({
+      id: i + 1,
+      title: 'یادآور',
+      body: $('txt').value,
+      schedule: { at: new Date(now + (i === 0 ? 2000 : i * ms)), allowWhileIdle: true }
+    });
+  }
+  await LN.schedule({ notifications: list });
+  save({ txt: $('txt').value, num: n, unit: u, on: true });
+  setUI(true);
+  setStatus('فعال است ✅\nهر ' + n + ' ' + $('unit').selectedOptions[0].text + ' یک اعلان می‌آید، حتی وقتی برنامه بسته است.\n(با هر بار باز کردن برنامه، اعلان‌های بعدی تمدید می‌شوند.)');
+}
+
+async function stop() {
+  if (LN) await cancelAll();
+  const s = load() || {};
+  s.on = false; save(s);
+  setUI(false);
+  setStatus('متوقف شد.');
+}
+
+$('btn').onclick = () => active ? stop() : start();
+
+const s = load();
+if (s) {
+  $('txt').value = s.txt; $('num').value = s.num; $('unit').value = s.unit;
+  if (s.on) start(true);
+}
+</script>
+</body>
+</html>
